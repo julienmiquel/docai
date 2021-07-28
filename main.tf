@@ -1,6 +1,9 @@
 variable "region" {
   default = "europe-west1"
 }
+variable "project" {
+  default = "google.com:ml-baguette-demos"
+}
 
 variable "location" {
   default = "EU"
@@ -39,6 +42,7 @@ resource "google_bigquery_dataset" "dataset_results_docai" {
   description                 = "Store Document AI results"
   location                    = var.location
 //  default_table_expiration_ms = 3600000
+  project               = var.project
 
   labels = {
         env : var.env
@@ -102,6 +106,7 @@ resource "google_storage_bucket" "gcs_input_doc" {
   name          = format("gcs_input_doc_%s", var.env)
   location      = var.location
   force_destroy = true
+  project               = var.project
 
   uniform_bucket_level_access = true
 
@@ -115,6 +120,7 @@ resource "google_storage_bucket" "gcs_json_tmp" {
   name          = format("gcs_json_tmp_%s", var.env)
   location      = var.location
   force_destroy = true
+  project               = var.project
 
   uniform_bucket_level_access = true
 
@@ -127,6 +133,7 @@ resource "google_storage_bucket" "gcs_input_single" {
   name          = format("gcs_input_single_%s", var.env)
   location      = var.location
   force_destroy = true
+  project               = var.project
 
   uniform_bucket_level_access = true
 
@@ -139,6 +146,7 @@ resource "google_storage_bucket" "gcs_results_json" {
   name          = format("gcs_results_json_%s", var.env)
   location      = var.location
   force_destroy = true
+  project               = var.project
 
   uniform_bucket_level_access = true
 
@@ -153,6 +161,7 @@ resource "google_storage_bucket" "bucket_source_archives" {
     name          = format("bucket_source_archives_%s", var.env)
     location      = var.location
     force_destroy = true
+    project               = var.project
 
     uniform_bucket_level_access = true
 
@@ -186,10 +195,11 @@ resource "google_cloudfunctions_function" "gcf_input" {
     name                  = format("gcf_input_%s", var.env)
     description           = "gcf_input process input pdf"
     region = var.region
+    project               = var.project
 
     runtime               = "python39"
     entry_point           = "main_run"
-    timeout = 3000
+    timeout = 540
     max_instances = 10
     ingress_settings = "ALLOW_INTERNAL_ONLY"
     
@@ -241,10 +251,11 @@ resource "google_cloudfunctions_function" "gcf_process_splitter_results" {
     name                  = format("gcf_process_splitter_results_%s", var.env)
     description           = "gcf_process_splitter_results process splitter json results"
     region = var.region
+    project               = var.project
 
     runtime               = "python39"
     entry_point           = "main_run"
-    timeout = 3000
+    timeout = 540
     max_instances = 10
     ingress_settings = "ALLOW_INTERNAL_ONLY"
     
@@ -298,10 +309,11 @@ resource "google_cloudfunctions_function" "gcf_parse_results" {
     name                  = format("gcf_parse_results_%s", var.env)
     description           = "gcf_parse_results process invoice json results"
     region = var.region
+    project               = var.project
 
     runtime               = "python39"
     entry_point           = "main_run"
-    timeout = 3000
+    timeout = 540
     max_instances = 10
     ingress_settings = "ALLOW_INTERNAL_ONLY"
     
@@ -357,10 +369,11 @@ resource "google_cloudfunctions_function" "gcf_input_single" {
     name                  = format("gcf_input_single_%s", var.env)
     description           = "gcf_input process input pdf"
     region = var.region
+    project               = var.project
 
     runtime               = "python39"
     entry_point           = "main_run"
-    timeout = 3000
+    timeout = 540
     max_instances = 10
     ingress_settings = "ALLOW_INTERNAL_ONLY"
 

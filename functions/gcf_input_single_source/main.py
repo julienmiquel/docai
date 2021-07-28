@@ -167,7 +167,7 @@ def batch_process_documents_beta13(
     gcs_input_uri,
     gcs_output_uri_prefix,
     OUTPUT_JSON_URI,
-    timeout: int = 3000,
+    timeout: int = 540,
 ):
 
     from google.cloud import documentai_v1beta3 as documentai
