@@ -167,7 +167,7 @@ def batch_process_documents_beta13(
     gcs_input_uri,
     gcs_output_uri_prefix,
     OUTPUT_JSON_URI,
-    timeout: int = 300,
+    timeout: int = 3000,
 ):
 
     from google.cloud import documentai_v1beta3 as documentai
@@ -207,6 +207,8 @@ def batch_process_documents_beta13(
 
     operation = client.batch_process_documents(request)
     print('operation: {}'.format(operation))
-    
+    # Wait for the operation to finish
+    operation.result(timeout=timeout)
+    print('operation end: {}'.format(operation))
     
     print("end")

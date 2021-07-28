@@ -189,7 +189,7 @@ resource "google_cloudfunctions_function" "gcf_input" {
 
     runtime               = "python39"
     entry_point           = "main_run"
-    timeout = 60
+    timeout = 3000
     max_instances = 10
     ingress_settings = "ALLOW_INTERNAL_ONLY"
     
@@ -244,7 +244,7 @@ resource "google_cloudfunctions_function" "gcf_process_splitter_results" {
 
     runtime               = "python39"
     entry_point           = "main_run"
-    timeout = 60
+    timeout = 3000
     max_instances = 10
     ingress_settings = "ALLOW_INTERNAL_ONLY"
     
@@ -301,7 +301,7 @@ resource "google_cloudfunctions_function" "gcf_parse_results" {
 
     runtime               = "python39"
     entry_point           = "main_run"
-    timeout = 60
+    timeout = 3000
     max_instances = 10
     ingress_settings = "ALLOW_INTERNAL_ONLY"
     
@@ -360,7 +360,7 @@ resource "google_cloudfunctions_function" "gcf_input_single" {
 
     runtime               = "python39"
     entry_point           = "main_run"
-    timeout = 60
+    timeout = 3000
     max_instances = 10
     ingress_settings = "ALLOW_INTERNAL_ONLY"
 
@@ -370,10 +370,10 @@ resource "google_cloudfunctions_function" "gcf_input_single" {
 
     service_account_email = var.service_account_email  
 
-   event_trigger  {
+    event_trigger  {
       event_type    = "google.storage.object.finalize"
       resource= google_storage_bucket.gcs_input_single.name
-        failure_policy {
+          failure_policy {
             retry = false
         }
     }
