@@ -10,7 +10,7 @@ variable "location" {
 }
 
 variable "env" {
-  default = "dev_docai_2"
+  default = "dev_docai_invoices_1"
 }
 
 variable "docai_processor" {
@@ -30,6 +30,10 @@ variable "service_account_email" {
 
 }
 
+variable "deletion_protection" {
+  default = false
+}
+
 
 provider "google" {
   region = var.region
@@ -37,7 +41,7 @@ provider "google" {
 
 // Big query
 resource "google_bigquery_dataset" "dataset_results_docai" {
-  dataset_id                  = format("bq_results_%s", var.env)
+  dataset_id                  = format("bq_results_doc_%s", var.env)
   friendly_name               = "Invoices results"
   description                 = "Store Document AI results"
   location                    = var.location
@@ -49,9 +53,10 @@ resource "google_bigquery_dataset" "dataset_results_docai" {
   }
 }
 
-resource "google_bigquery_table" "splitter_table" {
+resource "google_bigquery_table" "results_tables" {
   dataset_id = google_bigquery_dataset.dataset_results_docai.dataset_id
-  table_id   = "splitter"
+  table_id   = "results"
+  project               = var.project
 
   labels = {
         env : var.env
@@ -60,44 +65,43 @@ resource "google_bigquery_table" "splitter_table" {
   schema = <<EOF
 [
   {
-    "name": "type",
+    "name": "doc_type",
     "type": "STRING",
     "mode": "NULLABLE",
     "description": "type of the document"
   },
   {
-    "name": "input",
+    "name": "key",
     "type": "STRING",
     "mode": "NULLABLE",
-    "description": "input pdf"
+    "description": ""
   },
   {
-    "name": "output_split",
+    "name": "value",
     "type": "STRING",
     "mode": "NULLABLE",
-    "description": "pdf splitted"
+    "description": ""
   },
   {
-    "name": "gcs_output_uri",
+    "name": "type",
     "type": "STRING",
     "mode": "NULLABLE",
-    "description": "pdf splitted"
+    "description": ""
   },
   {
-    "name": "text",
-    "type": "STRING",
+    "name": "confidence",
+    "type": "FLOAT",
     "mode": "NULLABLE",
-    "description": "text of input pdf"
+    "description": "confidence"
   },
   {
-    "name": "text_entity",
+    "name": "file",
     "type": "STRING",
     "mode": "NULLABLE",
-    "description": "text of splitted pdf"
+    "description": ""
   }
 ]
 EOF
-
 }
 
 
@@ -282,7 +286,7 @@ resource "google_cloudfunctions_function" "gcf_process_splitter_results" {
     OUTPUT_URI = google_storage_bucket.gcs_input_single.name,
     OUTPUT_JSON_URI = google_storage_bucket.gcs_json_tmp.name,
     INPUT_PDF_PATH = google_storage_bucket.gcs_input_doc.name,
-    BQ_TABLENAME = format("%s.%s",google_bigquery_table.splitter_table.dataset_id, google_bigquery_table.splitter_table.table_id)
+    BQ_TABLENAME = format("%s.%s",google_bigquery_table.results_tables.dataset_id, google_bigquery_table.results_tables.table_id)
   }
 }
 
@@ -379,7 +383,7 @@ resource "google_cloudfunctions_function" "gcf_input_single" {
 
     available_memory_mb   = 256
     source_archive_bucket = google_storage_bucket.bucket_source_archives.name 
-    source_archive_object = google_storage_bucket_object.gcf_input_source.name
+    source_archive_object = google_storage_bucket_object.gcf_input_single_source.name
 
     service_account_email = var.service_account_email  
 
@@ -397,7 +401,9 @@ resource "google_cloudfunctions_function" "gcf_input_single" {
 
     environment_variables = {
         PROCESSOR = var.docai_processor_invoice,
-        OUTPUT_URI = google_storage_bucket.gcs_results_json.name
+        OUTPUT_URI = google_storage_bucket.gcs_results_json.name,
+        BQ_TABLENAME = format("%s.%s",google_bigquery_table.results_tables.dataset_id, google_bigquery_table.results_tables.table_id)
+
     }
 }
 

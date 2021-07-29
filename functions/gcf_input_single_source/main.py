@@ -10,6 +10,8 @@ from google.cloud import storage
 
 from urllib.parse import urlparse
 
+import pandas_gbq
+import pandas as pd
 
 def main_run(event, context):
     print('Event ID: {}'.format(context.event_id))
@@ -39,15 +41,35 @@ def main_run(event, context):
     if processor in "ERROR":
         logging.fatal('processor variable is not set exit program')
         return
+    
+    bqTableName = os.environ.get('BQ_TABLENAME', 'ERROR: Specified environment variable is not set.')
+    if bqTableName in "ERROR":
+        logging.fatal('inputPdfPath variable is not set exit program')
+        return
 
     logging.debug('PROCESSOR: {}'.format(processor))
     print('processor: {}'.format(processor)) 
 
-    project_id = get_env()
-    print(project_id)
+
 
 #    process(processor,"eu", processor,  "gs://" + event['bucket'] +"/" + event['name'],  event['name'] , "out", output_bucket)
-    batch_process_documents(project_id, 'eu', processor,         "gs://" + event['bucket'] +"/" + event['name'],  event['name'], output_bucket)
+#    batch_process_documents(project_id, 'eu', processor,         "gs://" + event['bucket'] +"/" + event['name'],  event['name'], output_bucket)
+    gcs_input_uri = "gs://" + event['bucket'] +"/" + event['name']
+    if gcs_input_uri.lower().endswith(".pdf"):
+        project_id = get_env()
+        print(project_id)
+
+        document = process(    project_id, 'eu', processor, gcs_input_uri)
+        df = getDF(document    ,  gcs_input_uri, )
+
+        print("Start Insert BQ : " + bqTableName)
+        print("json")
+        print(df.to_json())
+
+        pandas_gbq.to_gbq(df, bqTableName, if_exists='append')
+        print("Insert BQ done in : " + bqTableName)
+    else:
+        print("Unsuported extention: " + gcs_input_uri)
 
     return 'OK'
 
@@ -69,11 +91,15 @@ def get_env():
 
 #Synchronous processing
 def process(
-    project_id: str, location: str, processor_id: str, gcs_input_uri: str, gcs_output_uri : str, gcs_output_uri_prefix, OUTPUT_JSON_URI,  timeout: int = 300,
+    project_id: str, location: str, processor_id: str, gcs_input_uri: str,   
+    timeout: int = 300,
 ):
 
     # Instantiates a client
-    opts = {"api_endpoint": f"{location}-documentai.googleapis.com"}
+    # You must set the api_endpoint if you use a location other than 'us', e.g.:
+    opts = {}
+    if location == "eu":
+        opts = {"api_endpoint": "eu-documentai.googleapis.com"}
     client = documentai.DocumentProcessorServiceClient(client_options=opts)
 
     # The full resource name of the processor, e.g.:
@@ -91,8 +117,9 @@ def process(
     
     # Read the file into memory
     document = {"content": image_content, "mime_type": "application/pdf"}
+
     # Configure the process request
-    request = {"name": name, "document": document}
+    request = {"name": name, "raw_document": document}
     
     # Recognizes text entities in the PDF document
     result = client.process_document(request=request, timeout=timeout)
@@ -100,18 +127,67 @@ def process(
     document = result.document
 
     print("Document processing complete.")
+    return document
+
+
+def getDF(document, name, doc_type):
+    lst = [[]]
+    lst.pop()
+    
+    for entity in document.entities:        
+        if entity.normalized_value.text != "":
+            val = entity.normalized_value.text
+            #print(f'{entity.type_} {entity.mention_text} - normalized_value: {val} - {entity.confidence} ' )        
+        else:
+            val = entity.mention_text
+            #print(f'{entity.type_} {val} - {entity.confidence} ' )        
+
+        lst.append(["entity", val, entity.type_, entity.confidence, name , doc_type]) 
+        
+
 
     # Read the text recognition output from the processor
-    text = document.text
-    print("The document contains the following text (first 100 charactes):")
-    print(text[:100])
-    print(document)
-    # Read the detected page split from the processor
+    for page in document.pages:
+        for form_field in page.form_fields:
+            field_name = get_text(form_field.field_name, document)
+            field_value = get_text(form_field.field_value, document)
+            field_type = field_name
+
+            #print(f"Extracted key value pair: \t{field_name}, {field_value}")
+            
+            lst.append(["key_value",field_value, field_type, form_field.field_name.confidence, name , doc_type])
+
+    df = pd.DataFrame(lst
+                          ,columns =['key', 'value', 'type', 'confidence', 'file', 'doc_type']
+                         )
+
+    
+    return  df
 
 
 
+# Extract shards from the text field
+def get_text(doc_element: dict, document: dict):
+    """
+    Document AI identifies form fields by their offsets
+    in document text. This function converts offsets
+    to text snippets.
+    """
+    response = ""
+    # If a text segment spans several lines, it will
+    # be stored in different text segments.
+    for segment in doc_element.text_anchor.text_segments:
+        start_index = (
+            int(segment.start_index)
+            if segment in doc_element.text_anchor.text_segments
+            else 0
+        )
+        end_index = int(segment.end_index)
+        response += document.text[start_index:end_index]
+    return response
 
-#Asynchronous processing
+
+#Synchronous processing
 def batch_process_documents(
     project_id,
     location,
@@ -119,7 +195,7 @@ def batch_process_documents(
     gcs_input_uri,
     gcs_output_uri,
     gcs_output_uri_prefix,
-    timeout: int = 300,
+    timeout: int = 540,
 ):
 
     # You must set the api_endpoint if you use a location other than 'us', e.g.:
@@ -154,61 +230,11 @@ def batch_process_documents(
 
     operation = client.batch_process_documents(request)
 
-    print('operation: {}'.format(operation))
-    
-    print("end")
-
-
-#Asynchronous processing
-def batch_process_documents_beta13(
-    project_id,
-    location,
-    processor_id,
-    gcs_input_uri,
-    gcs_output_uri_prefix,
-    OUTPUT_JSON_URI,
-    timeout: int = 540,
-):
-
-    from google.cloud import documentai_v1beta3 as documentai
-
-    opts = {"api_endpoint": f"{location}-documentai.googleapis.com"}
-    print('api_endpoint: {}'.format(opts))
-
-    client = documentai.DocumentProcessorServiceClient(client_options=opts)
-    print('client: {}'.format(client))
-
-    destination_uri = f"gs://{OUTPUT_JSON_URI}/{gcs_output_uri_prefix}/"
-    print('destination_uri: {}'.format(destination_uri))
-
-    # 'mime_type' can be 'application/pdf', 'image/tiff',
-    # and 'image/gif', or 'application/json'
-    input_config = documentai.types.document_processor_service.BatchProcessRequest.BatchInputConfig(
-        gcs_source=gcs_input_uri, mime_type="application/pdf"
-    )
-    print('input_config: {}'.format(input_config))
-
-    # Where to write results
-    output_config = documentai.types.document_processor_service.BatchProcessRequest.BatchOutputConfig(
-        gcs_destination=destination_uri
-    )
-    print('output_config: {}'.format(output_config))
-
-    # Location can be 'us' or 'eu'
-    name = f"projects/{project_id}/locations/{location}/processors/{processor_id}"
-    print('processor name: {}'.format(name))
-
-    request = documentai.types.document_processor_service.BatchProcessRequest(
-        name=name,
-        input_configs=[input_config],
-        output_config=output_config,
-    )
-    print('request: {}'.format(request))
-
-    operation = client.batch_process_documents(request)
-    print('operation: {}'.format(operation))
+    print('operation name: {}'.format(operation.name, operation.response))
+    print('operation response: {}'.format(operation.response))    
     # Wait for the operation to finish
-    operation.result(timeout=timeout)
-    print('operation end: {}'.format(operation))
+    res = operation.result(timeout=timeout)
+    print('operation end: {} / {}'.format(res, operation.error))
     
     print("end")
+
