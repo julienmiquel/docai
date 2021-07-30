@@ -59,20 +59,28 @@ def main_run(event, context):
         project_id = get_env()
         print(project_id)
 
-        document = process(    project_id, 'eu', processor, gcs_input_uri)
-        df = getDF(document    ,  gcs_input_uri, )
+        doc_type = getDocumentType(gcs_input_uri)
+        if doc_type == "invoices":
+            document = process(    project_id, 'eu', processor, gcs_input_uri)
 
-        print("Start Insert BQ : " + bqTableName)
-        print("json")
-        print(df.to_json())
+            df = getDF(document    ,  gcs_input_uri, doc_type)
 
-        pandas_gbq.to_gbq(df, bqTableName, if_exists='append')
-        print("Insert BQ done in : " + bqTableName)
+            print("Start Insert BQ : " + bqTableName)
+            print("json")
+            #df.to_gbq(bqTableName,project_id,if_exists='append')
+
+            pandas_gbq.to_gbq(df, bqTableName, if_exists='append')
+            print("Insert BQ done in : " + bqTableName)
+        else:
+            print("Unsuported document type: " + doc_type + " uri:"+ gcs_input_uri)
     else:
-        print("Unsuported extention: " + gcs_input_uri)
+        print("Unsuported extention: " + gcs_input_uri)            
 
     return 'OK'
 
+# TODO: Implement document type classification
+def getDocumentType(gcs_input_uri):
+    return "invoices"
 
 def get_env():
     
