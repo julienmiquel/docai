@@ -55,26 +55,56 @@ def main_run(event, context):
 #    process(processor,"eu", processor,  "gs://" + event['bucket'] +"/" + event['name'],  event['name'] , "out", output_bucket)
 #    batch_process_documents(project_id, 'eu', processor,         "gs://" + event['bucket'] +"/" + event['name'],  event['name'], output_bucket)
     gcs_input_uri = "gs://" + event['bucket'] +"/" + event['name']
-    if gcs_input_uri.lower().endswith(".pdf"):
-        project_id = get_env()
-        print(project_id)
 
-        doc_type = getDocumentType(gcs_input_uri)
-        if doc_type == "invoices":
-            document = process(    project_id, 'eu', processor, gcs_input_uri)
 
-            df = getDF(document    ,  gcs_input_uri, doc_type)
+    from google.cloud import bigquery
 
-            print("Start Insert BQ : " + bqTableName)
-            print("json")
-            #df.to_gbq(bqTableName,project_id,if_exists='append')
+    # Construct a BigQuery client object.
+    bqclient = bigquery.Client()
 
-            pandas_gbq.to_gbq(df, bqTableName, if_exists='append')
-            print("Insert BQ done in : " + bqTableName)
+    query_string = "SELECT file FROM `"+bqTableName+"`"
+    print(query_string)
+
+    dataframe = (
+        bqclient.query(query_string)
+        .result()
+        .to_dataframe(
+            # Optionally, explicitly request to use the BigQuery Storage API. As of
+            # google-cloud-bigquery version 1.26.0 and above, the BigQuery Storage
+            # API is used by default.
+            create_bqstorage_client=True,
+        )
+    )
+    print("Length dataframe :",len(dataframe))
+    print("filename : ",gcs_input_uri.split("/")[-1])
+    
+    dataframe = dataframe[dataframe["file"].str.contains(gcs_input_uri.split("/")[-1])]
+    print("Length dataframe :",len(dataframe))
+    
+    if len(dataframe)==0:
+        print("Processing :",gcs_input_uri)
+        if gcs_input_uri.lower().endswith(".pdf"):
+            project_id = get_env()
+            print(project_id)
+
+            doc_type = getDocumentType(gcs_input_uri)
+            if doc_type == "invoices":
+                document = process(    project_id, 'eu', processor, gcs_input_uri)
+
+                df = getDF(document    ,  gcs_input_uri, doc_type)
+
+                print("Start Insert BQ : " + bqTableName)
+                print("json")
+                #df.to_gbq(bqTableName,project_id,if_exists='append')
+
+                pandas_gbq.to_gbq(df, bqTableName, if_exists='append')
+                print("Insert BQ done in : " + bqTableName)
+            else:
+                print("Unsuported document type: " + doc_type + " uri:"+ gcs_input_uri)
         else:
-            print("Unsuported document type: " + doc_type + " uri:"+ gcs_input_uri)
+            print("Unsuported extention: " + gcs_input_uri)            
     else:
-        print("Unsuported extention: " + gcs_input_uri)            
+        print("Already processed in BQ: " + gcs_input_uri)            
 
     return 'OK'
 
